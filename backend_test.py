@@ -324,20 +324,21 @@ class MindMateAPITester:
     def test_record_mood(self):
         """Test mood tracking"""
         headers = {'Authorization': f'Bearer {self.student_token}'}
-        headers.pop('Content-Type', None)
         
         form_data = {
             'mood': 'happy',
             'emoji': '😊'
         }
         
+        # Use files parameter to send as form data
         success, response = self.run_test(
             "Record Mood",
             "POST",
             "mood",
             200,
             data=form_data,
-            headers=headers
+            headers=headers,
+            files={}  # This forces form-data encoding
         )
         return success
 
