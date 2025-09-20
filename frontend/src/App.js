@@ -247,7 +247,7 @@ function App() {
                   <Route path="/chatbot" element={
                     <ProtectedRoute>
                       <ChatbotPage />
-                    </RotectedRoute>
+                    </ProtectedRoute>
                   } />
                   
                   <Route path="/counsellor-dashboard" element={
