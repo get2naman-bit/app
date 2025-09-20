@@ -267,20 +267,21 @@ class MindMateAPITester:
             return False
             
         headers = {'Authorization': f'Bearer {self.student_token}'}
-        headers.pop('Content-Type', None)
         
         form_data = {
             'content': 'Hello everyone! This is a test message.',
             'group_id': self.group_id
         }
         
+        # Use files parameter to send as form data
         success, response = self.run_test(
             "Send Group Message",
             "POST",
             "messages",
             200,
             data=form_data,
-            headers=headers
+            headers=headers,
+            files={}  # This forces form-data encoding
         )
         return success
 
