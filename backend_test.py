@@ -210,23 +210,23 @@ class MindMateAPITester:
     def test_create_group(self):
         """Test creating a support group"""
         headers = {'Authorization': f'Bearer {self.student_token}'}
-        # Use form data for group creation
-        headers.pop('Content-Type', None)
         
         form_data = {
             'name': 'Test Support Group',
             'description': 'A test support group for anxiety',
             'group_type': 'support',
-            'is_public': 'true'
+            'is_public': True
         }
         
+        # Use files parameter to send as form data
         success, response = self.run_test(
             "Create Group",
             "POST",
             "groups",
             200,
             data=form_data,
-            headers=headers
+            headers=headers,
+            files={}  # This forces form-data encoding
         )
         
         if success and 'id' in response:
