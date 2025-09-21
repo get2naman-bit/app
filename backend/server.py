@@ -4,6 +4,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from contextlib import asynccontextmanager
 import os
 import logging
 from pathlib import Path
@@ -24,17 +25,99 @@ UPLOAD_DIR = ROOT_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+client = None
+db = None
 
 # JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-this')
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
-# Create the main app
-app = FastAPI(title="MindMate - Student Mental Health Platform")
+# This is the new lifespan context manager
+# It replaces both the startup and shutdown event decorators.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global client, db
+    
+    # --- Code that runs on application startup ---
+    print("Connecting to MongoDB...")
+    mongo_url = os.environ.get('MONGO_URL')
+    if not mongo_url:
+        raise RuntimeError("MONGO_URL environment variable is not set.")
+        
+    try:
+        client = AsyncIOMotorClient(mongo_url)
+        db_name = os.environ.get('DB_NAME')
+        if not db_name:
+            raise RuntimeError("DB_NAME environment variable is not set.")
+        db = client[db_name]
+        print("Connected to MongoDB successfully!")
+    except Exception as e:
+        logging.error(f"Error connecting to MongoDB: {e}")
+        # You might want to raise an exception here to stop the app from starting.
+        # For now, we'll just log it.
+
+    # Initialize sample data if it doesn't already exist
+    print("Initializing sample data...")
+    sample_quizzes = [
+        {
+            "id": str(uuid.uuid4()),
+            "title": "Anxiety Assessment",
+            "description": "Evaluate your anxiety levels",
+            "category": "anxiety",
+            "created_by": "system",
+            "questions": [
+                {
+                    "question": "How often do you feel nervous or anxious?",
+                    "options": ["Never", "Sometimes", "Often", "Always"],
+                    "type": "multiple_choice"
+                },
+                {
+                    "question": "Do you have trouble concentrating?",
+                    "options": ["Never", "Sometimes", "Often", "Always"],
+                    "type": "multiple_choice"
+                }
+            ],
+            "created_at": datetime.now(timezone.utc)
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "title": "Depression Screening",
+            "description": "Screen for depression symptoms",
+            "category": "depression",
+            "created_by": "system",
+            "questions": [
+                {
+                    "question": "How often do you feel down or hopeless?",
+                    "options": ["Never", "Rarely", "Sometimes", "Often"],
+                    "type": "multiple_choice"
+                },
+                {
+                    "question": "Have you lost interest in activities you used to enjoy?",
+                    "options": ["Not at all", "A little", "Somewhat", "Very much"],
+                    "type": "multiple_choice"
+                }
+            ],
+            "created_at": datetime.now(timezone.utc)
+        }
+    ]
+    
+    for quiz in sample_quizzes:
+        existing = await db.quizzes.find_one({"title": quiz["title"]})
+        if not existing:
+            await db.quizzes.insert_one(quiz)
+            print(f"Inserted sample quiz: {quiz['title']}")
+            
+    # The `yield` keyword is crucial. It hands control back to the application.
+    yield
+
+    # --- Code that runs on application shutdown ---
+    print("Closing MongoDB connection...")
+    if client:
+        client.close()
+
+# Create the main app instance and pass the lifespan function
+app = FastAPI(title="MindMate - Student Mental Health Platform", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 # Security
@@ -376,10 +459,11 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.include_router(api_router)
 
 # CORS middleware
+cors_origins = os.environ.get('CORS_ORIGINS', '').split(',')
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -390,60 +474,3 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
-
-# Initialize sample data
-@app.on_event("startup")
-async def initialize_data():
-    # Create sample quizzes
-    sample_quizzes = [
-        {
-            "id": str(uuid.uuid4()),
-            "title": "Anxiety Assessment",
-            "description": "Evaluate your anxiety levels",
-            "category": "anxiety",
-            "created_by": "system",
-            "questions": [
-                {
-                    "question": "How often do you feel nervous or anxious?",
-                    "options": ["Never", "Sometimes", "Often", "Always"],
-                    "type": "multiple_choice"
-                },
-                {
-                    "question": "Do you have trouble concentrating?",
-                    "options": ["Never", "Sometimes", "Often", "Always"],
-                    "type": "multiple_choice"
-                }
-            ],
-            "created_at": datetime.now(timezone.utc)
-        },
-        {
-            "id": str(uuid.uuid4()),
-            "title": "Depression Screening",
-            "description": "Screen for depression symptoms",
-            "category": "depression",
-            "created_by": "system",
-            "questions": [
-                {
-                    "question": "How often do you feel down or hopeless?",
-                    "options": ["Never", "Rarely", "Sometimes", "Often"],
-                    "type": "multiple_choice"
-                },
-                {
-                    "question": "Have you lost interest in activities you used to enjoy?",
-                    "options": ["Not at all", "A little", "Somewhat", "Very much"],
-                    "type": "multiple_choice"
-                }
-            ],
-            "created_at": datetime.now(timezone.utc)
-        }
-    ]
-    
-    # Insert sample quizzes if they don't exist
-    for quiz in sample_quizzes:
-        existing = await db.quizzes.find_one({"title": quiz["title"]})
-        if not existing:
-            await db.quizzes.insert_one(quiz)
