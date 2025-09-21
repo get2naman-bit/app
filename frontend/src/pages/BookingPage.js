@@ -161,7 +161,14 @@ const BookingPage = () => {
       </div>
     );
   }
+  const createAndJoinMeeting = () => {
 
+    const uniqueId = Date.now().toString();
+
+    const meetingUrl = `https://meet.google.com/lookup/${uniqueId}`;
+
+    window.open(meetingUrl, "_blank");
+  };
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
@@ -482,7 +489,7 @@ const BookingPage = () => {
                       
                       {booking.status === 'scheduled' && (
                         <div className="pt-3 border-t">
-                          <Button size="sm" className="w-full">
+                          <Button onClick={createAndJoinMeeting} size="sm" className="w-full">
                             Join Session
                           </Button>
                         </div>
